@@ -1,14 +1,6 @@
 name: Tag and Release
 
 on:
-  pull_request:
-    types: [labeled]
-    branches:
-      - main
-  pull_request_target:
-    types: [closed]
-    branches:
-      - main
   push:
     branches:
       - main
@@ -18,21 +10,6 @@ permissions:
 
 jobs:
   tag:
-    if: |
-      (github.event_name == 'pull_request' &&
-       github.event.action == 'labeled' &&
-       (github.event.pull_request.labels.*.name == 'version:major' ||
-        github.event.pull_request.labels.*.name == 'version:minor' ||
-        github.event.pull_request.labels.*.name == 'version:patch')) ||
-      (github.event_name == 'pull_request_target' &&
-       github.event.action == 'closed' &&
-       github.event.pull_request.merged == true &&
-       !contains(github.event.pull_request.labels.*.name, 'version:major') &&
-       !contains(github.event.pull_request.labels.*.name, 'version:minor') &&
-       !contains(github.event.pull_request.labels.*.name, 'version:patch')) ||
-      (github.event_name == 'push' &&
-       github.ref == 'refs/heads/main' &&
-       !contains(github.event.head_commit.message, 'Merge pull request'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,8 +25,6 @@ jobs:
           CURRENT_VERSION=${LATEST_TAG#v}
 
           # Debug information
-          echo "Event name: ${{ github.event_name }}"
-          echo "Event action: ${{ github.event.action }}"
           echo "Commit message: ${{ github.event.head_commit.message }}"
 
           # Parse current version
@@ -63,42 +38,15 @@ jobs:
             patch=0
           fi
 
-          # Determine version bump type
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            if [[ "${{ github.event.action }}" == "labeled" ]]; then
-              if [[ "${{ github.event.pull_request.labels.*.name }}" == "version:major" ]]; then
-                BUMP_TYPE="major"
-              elif [[ "${{ github.event.pull_request.labels.*.name }}" == "version:minor" ]]; then
-                BUMP_TYPE="minor"
-              elif [[ "${{ github.event.pull_request.labels.*.name }}" == "version:patch" ]]; then
-                BUMP_TYPE="patch"
-              else
-                echo "No version label provided. Skipping version bump."
-                exit 0
-              fi
-            else
-              # PR was closed/merged without version label
-              # Check PR title and body for conventional commit types
-              PR_TITLE="${{ github.event.pull_request.title }}"
-              PR_BODY="${{ github.event.pull_request.body }}"
-
-              if [[ "$PR_TITLE" =~ ^(feat|feature)(\([a-z0-9-]+\))?: ]]; then
-                BUMP_TYPE="minor"
-              elif [[ "$PR_TITLE" =~ ^(fix|bugfix|hotfix)(\([a-z0-9-]+\))?: ]]; then
-                BUMP_TYPE="patch"
-              elif [[ "$PR_TITLE" =~ ^(breaking|break)(\([a-z0-9-]+\))?: ]]; then
-                BUMP_TYPE="major"
-              else
-                # Default to patch for merged PRs without clear indicators
-                BUMP_TYPE="patch"
-              fi
-            fi
+          # Determine version bump type from commit message
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+          if [[ "$COMMIT_MSG" =~ ^(feat|feature)(\([a-z0-9-]+\))?: ]]; then
+            BUMP_TYPE="minor"
+          elif [[ "$COMMIT_MSG" =~ ^(fix|bugfix|hotfix)(\([a-z0-9-]+\))?: ]]; then
+            BUMP_TYPE="patch"
+          elif [[ "$COMMIT_MSG" =~ ^(breaking|break)(\([a-z0-9-]+\))?: ]]; then
+            BUMP_TYPE="major"
           else
-            # Only process direct pushes that aren't PR merges
-            if [[ "${{ contains(github.event.head_commit.message, 'Merge pull request') }}" == "true" ]]; then
-              echo "Skipping version bump for PR merge commit"
-              exit 0
-            fi
             BUMP_TYPE="patch"
           fi
 
