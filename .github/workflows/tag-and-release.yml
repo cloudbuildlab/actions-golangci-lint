@@ -2,7 +2,13 @@ name: Tag and Release
 
 on:
   pull_request:
-    types: [labeled, closed]
+    types: [labeled]
+    branches:
+      - main
+  pull_request_target:
+    types: [closed]
+    branches:
+      - main
   push:
     branches:
       - main
@@ -18,12 +24,12 @@ jobs:
        (github.event.pull_request.labels.*.name == 'version:major' ||
         github.event.pull_request.labels.*.name == 'version:minor' ||
         github.event.pull_request.labels.*.name == 'version:patch')) ||
-      (github.event_name == 'pull_request' &&
+      (github.event_name == 'pull_request_target' &&
        github.event.action == 'closed' &&
        github.event.pull_request.merged == true &&
-       github.event.pull_request.labels.*.name != 'version:major' &&
-       github.event.pull_request.labels.*.name != 'version:minor' &&
-       github.event.pull_request.labels.*.name != 'version:patch') ||
+       !contains(github.event.pull_request.labels.*.name, 'version:major') &&
+       !contains(github.event.pull_request.labels.*.name, 'version:minor') &&
+       !contains(github.event.pull_request.labels.*.name, 'version:patch')) ||
       (github.event_name == 'push' &&
        github.ref == 'refs/heads/main' &&
        !contains(github.event.head_commit.message, 'Merge pull request'))
