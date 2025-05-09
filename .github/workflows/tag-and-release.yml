@@ -1,0 +1,177 @@
+name: Tag and Release
+
+on:
+  pull_request:
+    types: [labeled, closed]
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: |
+      (github.event_name == 'pull_request' &&
+       github.event.action == 'labeled' &&
+       (github.event.pull_request.labels.*.name == 'version:major' ||
+        github.event.pull_request.labels.*.name == 'version:minor' ||
+        github.event.pull_request.labels.*.name == 'version:patch')) ||
+      (github.event_name == 'pull_request' &&
+       github.event.action == 'closed' &&
+       github.event.pull_request.merged == true &&
+       github.event.pull_request.labels.*.name != 'version:major' &&
+       github.event.pull_request.labels.*.name != 'version:minor' &&
+       github.event.pull_request.labels.*.name != 'version:patch') ||
+      (github.event_name == 'push' &&
+       github.ref == 'refs/heads/main' &&
+       !contains(github.event.head_commit.message, 'Merge pull request'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get current version
+        id: get_version
+        run: |
+          # Get the latest tag
+          git fetch --tags
+          LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || echo "v0.0.0")
+          CURRENT_VERSION=${LATEST_TAG#v}
+
+          # Debug information
+          echo "Event name: ${{ github.event_name }}"
+          echo "Event action: ${{ github.event.action }}"
+          echo "Commit message: ${{ github.event.head_commit.message }}"
+
+          # Parse current version
+          if [[ "$CURRENT_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            major="${BASH_REMATCH[1]}"
+            minor="${BASH_REMATCH[2]}"
+            patch="${BASH_REMATCH[3]}"
+          else
+            major=0
+            minor=0
+            patch=0
+          fi
+
+          # Determine version bump type
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            if [[ "${{ github.event.action }}" == "labeled" ]]; then
+              if [[ "${{ github.event.pull_request.labels.*.name }}" == "version:major" ]]; then
+                BUMP_TYPE="major"
+              elif [[ "${{ github.event.pull_request.labels.*.name }}" == "version:minor" ]]; then
+                BUMP_TYPE="minor"
+              elif [[ "${{ github.event.pull_request.labels.*.name }}" == "version:patch" ]]; then
+                BUMP_TYPE="patch"
+              else
+                echo "No version label provided. Skipping version bump."
+                exit 0
+              fi
+            else
+              # PR was closed/merged without version label
+              # Check PR title and body for conventional commit types
+              PR_TITLE="${{ github.event.pull_request.title }}"
+              PR_BODY="${{ github.event.pull_request.body }}"
+
+              if [[ "$PR_TITLE" =~ ^(feat|feature)(\([a-z0-9-]+\))?: ]]; then
+                BUMP_TYPE="minor"
+              elif [[ "$PR_TITLE" =~ ^(fix|bugfix|hotfix)(\([a-z0-9-]+\))?: ]]; then
+                BUMP_TYPE="patch"
+              elif [[ "$PR_TITLE" =~ ^(breaking|break)(\([a-z0-9-]+\))?: ]]; then
+                BUMP_TYPE="major"
+              else
+                # Default to patch for merged PRs without clear indicators
+                BUMP_TYPE="patch"
+              fi
+            fi
+          else
+            # Only process direct pushes that aren't PR merges
+            if [[ "${{ contains(github.event.head_commit.message, 'Merge pull request') }}" == "true" ]]; then
+              echo "Skipping version bump for PR merge commit"
+              exit 0
+            fi
+            BUMP_TYPE="patch"
+          fi
+
+          # Bump version with limits
+          case "$BUMP_TYPE" in
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              if (( minor < 99 )); then
+                minor=$((minor + 1))
+                patch=0
+              else
+                major=$((major + 1))
+                minor=0
+                patch=0
+              fi
+              ;;
+            patch)
+              if (( patch < 99 )); then
+                patch=$((patch + 1))
+              else
+                if (( minor < 99 )); then
+                  minor=$((minor + 1))
+                  patch=0
+                else
+                  major=$((major + 1))
+                  minor=0
+                  patch=0
+                fi
+              fi
+              ;;
+          esac
+
+          NEW_VERSION="${major}.${minor}.${patch}"
+          MAJOR_VERSION="v${major}"
+
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "new_tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "major_version=$MAJOR_VERSION" >> $GITHUB_OUTPUT
+          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          if [ -n "${{ steps.get_version.outputs.latest_tag }}" ]; then
+            git log "${{ steps.get_version.outputs.latest_tag }}"..HEAD --pretty=format:"- %s" > changelog.txt
+          else
+            git log --pretty=format:"- %s" > changelog.txt
+          fi
+
+      - name: Create and push tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Check if tag already exists
+          if git rev-parse "v${{ steps.get_version.outputs.new_version }}" >/dev/null 2>&1; then
+            echo "Tag v${{ steps.get_version.outputs.new_version }} already exists. Skipping tag creation."
+            exit 0
+          fi
+
+          # Create and push version tag
+          echo "Creating tag v${{ steps.get_version.outputs.new_version }}"
+          git tag -a "v${{ steps.get_version.outputs.new_version }}" -m "Release v${{ steps.get_version.outputs.new_version }} (bump: ${{ steps.get_version.outputs.bump_type }})"
+          git push origin "v${{ steps.get_version.outputs.new_version }}"
+
+          # Update major version tag
+          echo "Updating major version tag ${{ steps.get_version.outputs.major_version }}"
+          git tag -fa "${{ steps.get_version.outputs.major_version }}" -m "Update major version tag"
+          git push origin "${{ steps.get_version.outputs.major_version }}" --force
+
+          # Create GitHub release
+          gh release create "v${{ steps.get_version.outputs.new_version }}" \
+            --title "v${{ steps.get_version.outputs.new_version }}" \
+            --notes-file changelog.txt

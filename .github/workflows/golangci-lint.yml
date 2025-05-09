@@ -1,0 +1,63 @@
+name: golangci-lint
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: 'Go version to use'
+        required: false
+        type: string
+        default: 'stable'
+      golangci-lint-version:
+        description: 'golangci-lint version to use'
+        required: false
+        type: string
+        default: 'latest'
+      working-directory:
+        description: 'Working directory to run linter in'
+        required: false
+        type: string
+        default: '.'
+      config-file:
+        description: 'Path to golangci-lint config file'
+        required: false
+        type: string
+        default: '.golangci.yml'
+      args:
+        description: 'Additional arguments to pass to golangci-lint'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  golangci-lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+      statuses: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+
+      - name: Copy default config if not exists
+        if: inputs.config-file == '.golangci.yml'
+        run: |
+          if [ ! -f "${{ inputs.working-directory }}/.golangci.yml" ]; then
+            cp .github/defaults/.golangci.yml ${{ inputs.working-directory }}/.golangci.yml
+          fi
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: ${{ inputs.golangci-lint-version }}
+          working-directory: ${{ inputs.working-directory }}
+          args: ${{ inputs.args != '' && format('--config={0} {1}', inputs.config-file, inputs.args) || format('--config={0}', inputs.config-file) }}
