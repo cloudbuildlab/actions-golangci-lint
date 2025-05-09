@@ -1,0 +1,52 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - gofmt
+    - govet
+    - errcheck
+    - staticcheck
+    - gosimple
+    - ineffassign
+    - unused
+    - misspell
+    - gosec
+    - unconvert
+    - goconst
+    - gocyclo
+    - dupl
+    - gocritic
+    - revive
+    - prealloc # missed slice preallocation
+    - nestif # complex if nesting
+    - nolintlint # catch bad //nolint usage
+    - exportloopref # warns about loop variable reuse
+  disable:
+    - golint # deprecated
+    - maligned # obsolete after Go 1.18
+    - nakedret # stylistic
+
+  settings:
+    gocyclo:
+      min-complexity: 15
+    dupl:
+      threshold: 100
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 3
+  new-from-rev: HEAD~1
