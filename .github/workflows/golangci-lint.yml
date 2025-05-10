@@ -52,7 +52,7 @@ jobs:
         if: inputs.config-file == '.golangci.yml'
         run: |
           if [ ! -f "${{ inputs.working-directory }}/.golangci.yml" ]; then
-            cp .github/defaults/.golangci.yml ${{ inputs.working-directory }}/.golangci.yml
+            cp ${{ github.action_path }}/.github/defaults/.golangci.yml ${{ inputs.working-directory }}/.golangci.yml
           fi
 
       - name: golangci-lint
