@@ -52,7 +52,7 @@ jobs:
         if: inputs.config-file == '.golangci.yml'
         run: |
           if [ ! -f "${{ inputs.working-directory }}/.golangci.yml" ]; then
-            cp "${GITHUB_WORKSPACE}/.github/defaults/.golangci.yml" "${{ inputs.working-directory }}/.golangci.yml"
+            curl -sSL https://raw.githubusercontent.com/cloudbuildlab/actions-golangci-lint/main/.github/defaults/.golangci.yml -o "${{ inputs.working-directory }}/.golangci.yml"
           fi
 
       - name: golangci-lint
