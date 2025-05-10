@@ -6,10 +6,8 @@ run:
 
 linters:
   enable:
-    - govet
     - errcheck
     - staticcheck
-    - gosimple
     - ineffassign
     - unused
     - misspell
@@ -23,10 +21,7 @@ linters:
     - prealloc # missed slice preallocation
     - nestif # complex if nesting
     - nolintlint # catch bad //nolint usage
-    - exportloopref # warns about loop variable reuse
   disable:
-    - golint # deprecated
-    - maligned # obsolete after Go 1.18
     - nakedret # stylistic
 
   settings:
